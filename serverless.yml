@@ -1,23 +1,59 @@
-service: serverless-webpack-typescript-example
+service: dejavu-api
 frameworkVersion: "3"
 package:
-  individually: true
-# Add the serverless-webpack plugin
+  individually: false
 plugins:
   - serverless-webpack
   - serverless-offline
+  - serverless-dotenv-plugin
 
 provider:
   name: aws
+  stage: ${env:DEJAVU_STAGE}
   runtime: nodejs16.x
 
 functions:
-  hello:
-    handler: src/handler.hello
+  oracles:
+    handler: src/handlers/getOracles.handler
     events:
       - http:
           method: get
-          path: hello
+          path: oracles
+          cors: true
+
+  getRooms:
+    handler: src/handlers/getRooms.handler
+    events:
+      - http:
+          cors: true
+          method: get
+          path: oracles/{id}/rooms
+          request: 
+            parameters: 
+              paths: 
+                id: true
+  getRoom:
+    handler: src/handlers/getRoom.handler
+    events:
+      - http:
+          cors: true
+          method: get
+          path: rooms/{id}
+          request: 
+            parameters: 
+              paths: 
+                id: true
+  getHistory:
+    handler: src/handlers/getHistory.handler
+    events:
+      - http:
+          cors: true
+          method: get
+          path: rooms/history/{id}
+          request: 
+            parameters: 
+              paths: 
+                id: true
 custom:
   webpack:
     webpackConfig: 'webpack.config.js'
