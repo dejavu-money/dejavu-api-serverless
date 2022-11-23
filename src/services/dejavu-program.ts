@@ -1,34 +1,33 @@
-import { Oracle, Room, RoomPlayer } from '../interfaces';
+import { Oracle, Room, RoomPlayer } from "../interfaces";
 import { Program } from "@project-serum/anchor";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import * as idl from '../solana/idl/dejavu_football.json';
+import * as idl from "../solana/idl/dejavu_football.json";
 import { DejavuFootball } from "../solana/types/dejavu_football";
-import * as bs58 from 'bs58';
+import * as bs58 from "bs58";
 
 import * as anchor from "@project-serum/anchor";
 
 export class Dejavu {
   DEJAVU_PROGRAM_ID = new PublicKey(process.env.DEJAVU_PROGRAM_ID as string);
-  DEJAVU_AUTHORIZER = new PublicKey(process.env.DEJAVU_AUTHORIZER_ACCOUTN as string);
+  DEJAVU_AUTHORIZER = new PublicKey(
+    process.env.DEJAVU_AUTHORIZER_ACCOUTN as string
+  );
 
   async getOracles(): Promise<Oracle[]> {
-
-    const oracles = await this.program.account.oracle.all(
-      [
-        {
-          memcmp: {
-            offset: 8,
-            bytes: this.DEJAVU_AUTHORIZER.toBase58() // auth filter
-          },
+    const oracles = await this.program.account.oracle.all([
+      {
+        memcmp: {
+          offset: 8,
+          bytes: this.DEJAVU_AUTHORIZER.toBase58(), // auth filter
         },
-        {
-          memcmp: {
-            offset: 60,
-            bytes: bs58.encode(Uint8Array.from([0]))
-          },
-        }
-      ]
-    );
+      },
+      {
+        memcmp: {
+          offset: 60,
+          bytes: bs58.encode(Uint8Array.from([0])),
+        },
+      },
+    ]);
 
     return oracles.map((oracle) => ({
       id: oracle.publicKey.toString(),
@@ -53,8 +52,8 @@ export class Dejavu {
       endsAt: data.finishedAt.toNumber(),
       isFinished: data.isFinished,
       scoreA: data.results[0],
-      scoreB: data.results[1]
-    }
+      scoreB: data.results[1],
+    };
   }
 
   async getRoom(room: PublicKey): Promise<Room> {
@@ -66,33 +65,35 @@ export class Dejavu {
       this.program.programId
     );
 
-    const roomPlayersKeyData = await this.program.account.roomPlayers.fetch(roomPlayersKey);
-
-
-    const players = await this.program.account.roomsHistory.all(
-      [
-        {
-          memcmp: {
-            offset: 8,
-            bytes: room.toBase58()
-          },
-        }
-      ]
+    const roomPlayersKeyData = await this.program.account.roomPlayers.fetch(
+      roomPlayersKey
     );
 
-    const roomPlayers: RoomPlayer[] = players.map((player) => {
-      const scoreA = (roomPlayersKeyData.list as number[][])[Number(player.account.key)][0];
-      const scoreB = (roomPlayersKeyData.list as number[][])[Number(player.account.key)][1];
+    const players = await this.program.account.roomsHistory.all([
+      {
+        memcmp: {
+          offset: 8,
+          bytes: room.toBase58(),
+        },
+      },
+    ]);
 
+    const roomPlayers: RoomPlayer[] = players.map((player) => {
+      const scoreA = (roomPlayersKeyData.list as number[][])[
+        Number(player.account.key)
+      ][0];
+      const scoreB = (roomPlayersKeyData.list as number[][])[
+        Number(player.account.key)
+      ][1];
 
       return {
         id: player.publicKey.toString(),
         scoreA: scoreA,
         scoreB: scoreB,
         idPlayer: player.account.createdBy.toString(),
-        winner: (scoreA === oracle.scoreA && scoreB === oracle.scoreB),
-        withdrew: player.account.withdrew
-      }
+        winner: scoreA === oracle.scoreA && scoreB === oracle.scoreB,
+        withdrew: player.account.withdrew,
+      };
     });
 
     return {
@@ -100,92 +101,86 @@ export class Dejavu {
       bid: roomData.initAmount.toNumber(),
       oracle: oracle,
       playersCount: roomPlayers.length,
-      roomPlayers
-    }
+      roomPlayers,
+    };
   }
 
   async getRooms(oracle: PublicKey): Promise<Room[]> {
     const oracleData = await this.getOracle(oracle);
 
-    const rooms = await this.program.account.room.all(
-      [
-        {
-          memcmp: {
-            offset: 8,
-            bytes: oracle.toBase58()
-          },
-        }
-      ]
-    );
+    const rooms = await this.program.account.room.all([
+      {
+        memcmp: {
+          offset: 8,
+          bytes: oracle.toBase58(),
+        },
+      },
+    ]);
 
     return rooms.map((room) => ({
       id: room.publicKey.toString(),
       bid: room.account.initAmount.toNumber(),
       playersCount: room.account.playersCount,
-      oracle: oracleData
+      oracle: oracleData,
     }));
   }
 
   async getHistory(player: PublicKey): Promise<Room[]> {
     const oraclesCache = {};
 
-    const roomPlayersMeta = await this.program.account.roomsHistory.all(
-      [
-        {
-          memcmp: {
-            offset: 8 + 32,
-            bytes: player.toBase58()
-          },
+    const roomPlayersMeta = await this.program.account.roomsHistory.all([
+      {
+        memcmp: {
+          offset: 8 + 32,
+          bytes: player.toBase58(),
         },
-        {
-          memcmp: {
-            offset: 8 + 32 + 32 + 32 + 1 + 1,
-            bytes: bs58.encode(Uint8Array.from([0]))
-          },
-        }
-      ]
-    );
+      },
+      {
+        memcmp: {
+          offset: 8 + 32 + 32 + 32 + 1 + 1,
+          bytes: bs58.encode(Uint8Array.from([0])),
+        },
+      },
+    ]);
 
     const data = roomPlayersMeta.map((history) => history.account.room);
-    
-    return Promise.all(roomPlayersMeta.map(async (history) => {
-      const room = await this.program.account.room.fetch(history.account.room);
-      const oracle = oraclesCache[room.oracle.toString()] || await this.getOracle(room.oracle);
-      oraclesCache[room.oracle.toString()] = oracle;
 
-      return {
-        id: history.account.room.toString(),
-        bid: room.initAmount.toNumber(),
-        playersCount: room.playersCount,
-        oracle: oracle,
-        createdAt: history.account.createdAt.toNumber()
-      }
-    }));
+    return Promise.all(
+      roomPlayersMeta.map(async (history) => {
+        const room = await this.program.account.room.fetch(
+          history.account.room
+        );
+        const oracle =
+          oraclesCache[room.oracle.toString()] ||
+          (await this.getOracle(room.oracle));
+        oraclesCache[room.oracle.toString()] = oracle;
+
+        return {
+          id: history.account.room.toString(),
+          bid: room.initAmount.toNumber(),
+          playersCount: room.playersCount,
+          oracle: oracle,
+          createdAt: history.account.createdAt.toNumber(),
+        };
+      })
+    );
   }
-  
+
   get provider() {
     const connection = new Connection(
-      process.env.ANCHOR_PROVIDER_URL as string, 
-      'confirmed'
+      process.env.ANCHOR_PROVIDER_URL as string,
+      "confirmed"
     );
 
-    return new anchor.AnchorProvider(
-      connection,
-      this.wallet,
-      {}
-    )
+    return new anchor.AnchorProvider(connection, this.wallet, {});
   }
 
   get wallet(): anchor.Wallet {
     return new anchor.Wallet(
       Keypair.fromSecretKey(
-        Buffer.from(
-          JSON.parse(
-            process.env.DEJAVU_WALLET_KEYPAIR as string
-          )
-        )
+        Buffer.from(JSON.parse(process.env.DEJAVU_WALLET_KEYPAIR as string))
       )
-    )
+    );
   }
 
   get program() {
@@ -196,6 +191,5 @@ export class Dejavu {
     );
   }
 }
-
 
 export const dejavu = new Dejavu();
